@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>俄罗斯方块 / Tetris</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      font-family: 'Press Start 2P', monospace;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 1.2rem;
+      margin-bottom: 16px;
+      text-shadow: 0 0 10px #00ff88;
+      color: #00ff88;
+    }
+    .game-container {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-width: 140px;
+    }
+    .panel-box {
+      background: rgba(0,0,0,0.4);
+      border: 3px solid #00ff88;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 0 20px rgba(0,255,136,0.2);
+    }
+    .panel-box h3 {
+      font-size: 0.5rem;
+      margin-bottom: 8px;
+      color: #00ff88;
+    }
+    .panel-box .value {
+      font-size: 0.7rem;
+      color: #fff;
+    }
+    #game-canvas {
+      display: block;
+      background: #0a0a12;
+      border: 4px solid #00ff88;
+      border-radius: 4px;
+      box-shadow: 0 0 30px rgba(0,255,136,0.3), inset 0 0 60px rgba(0,0,0,0.5);
+    }
+    #next-canvas {
+      display: block;
+      background: #0a0a12;
+      border: 2px solid #00ff88;
+      border-radius: 4px;
+      width: 100px;
+      height: 100px;
+    }
+    .controls {
+      margin-top: 16px;
+      font-size: 0.45rem;
+      text-align: center;
+      line-height: 1.8;
+      color: #888;
+    }
+    .controls kbd {
+      background: #222;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #00ff88;
+    }
+    .game-over-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .game-over-overlay.visible { display: flex; }
+    .game-over-overlay h2 {
+      font-size: 1rem;
+      color: #ff4444;
+      margin-bottom: 16px;
+      text-shadow: 0 0 10px #ff4444;
+    }
+    .game-over-overlay p { font-size: 0.5rem; margin-bottom: 20px; }
+    .btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.5rem;
+      padding: 12px 24px;
+      background: #00ff88;
+      color: #0a0a12;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 20px #00ff88;
+    }
+    .btn:active { transform: scale(0.98); }
+  </style>
+</head>
+<body>
+  <h1>俄罗斯方块 TETRIS</h1>
+  <div class="game-container">
+    <div class="side-panel">
+      <div class="panel-box">
+        <h3>SCORE</h3>
+        <div class="value" id="score">0</div>
+      </div>
+      <div class="panel-box">
+        <h3>LEVEL</h3>
+        <div class="value" id="level">1</div>
+      </div>
+      <div class="panel-box">
+        <h3>LINES</h3>
+        <div class="value" id="lines">0</div>
+      </div>
+      <div class="panel-box">
+        <h3>NEXT</h3>
+        <canvas id="next-canvas" width="100" height="100"></canvas>
+      </div>
+    </div>
+    <canvas id="game-canvas" width="300" height="600"></canvas>
+  </div>
+  <div class="controls">
+    <p><kbd>←</kbd> <kbd>→</kbd> 移动 &nbsp; <kbd>↑</kbd> 旋转 &nbsp; <kbd>↓</kbd> 软降 &nbsp; <kbd>空格</kbd> 硬降</p>
+    <p>Move &nbsp; Rotate &nbsp; Soft drop &nbsp; Hard drop</p>
+  </div>
+  <div class="game-over-overlay" id="game-over">
+    <h2>GAME OVER</h2>
+    <p id="final-score">Score: 0</p>
+    <button class="btn" id="restart-btn">PLAY AGAIN</button>
+  </div>
+
+  <script>
+    const COLS = 10;
+    const ROWS = 20;
+    const BLOCK = 30;
+    const COLORS = [
+      null,
+      '#00f5ff', // I
+      '#ffeb3b', // O
+      '#9c27b0', // T
+      '#4caf50', // S
+      '#f44336', // Z
+      '#2196f3', // J
+      '#ff9800', // L
+    ];
+    const SHAPES = [
+      null,
+      [[1,1,1,1]],
+      [[2,2],[2,2]],
+      [[0,3,0],[3,3,3]],
+      [[0,4,4],[4,4,0]],
+      [[5,5,0],[0,5,5]],
+      [[6,0,0],[6,6,6]],
+      [[0,0,7],[7,7,7]],
+    ];
+
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const nextCanvas = document.getElementById('next-canvas');
+    const nextCtx = nextCanvas.getContext('2d');
+
+    let board = [];
+    let score = 0;
+    let level = 1;
+    let lines = 0;
+    let gameOver = false;
+    let dropInterval = 1000;
+    let lastDrop = 0;
+    let currentPiece = null;
+    let nextPiece = null;
+    let animationId = null;
+
+    function createBoard() {
+      return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+    }
+
+    function randomPiece() {
+      const type = 1 + Math.floor(Math.random() * 7);
+      const shape = SHAPES[type].map(row => [...row]);
+      return { type, shape, x: Math.floor(COLS / 2) - Math.ceil(shape[0].length / 2), y: 0 };
+    }
+
+    function rotate(matrix) {
+      const rows = matrix.length;
+      const cols = matrix[0].length;
+      const rotated = Array.from({ length: cols }, () => Array(rows).fill(0));
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++)
+          rotated[c][rows - 1 - r] = matrix[r][c];
+      return rotated;
+    }
+
+    function collide(piece, dx = 0, dy = 0) {
+      const { shape, x, y } = piece;
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (!shape[r][c]) continue;
+          const ny = y + r + dy;
+          const nx = x + c + dx;
+          if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+          if (ny >= 0 && board[ny][nx]) return true;
+        }
+      }
+      return false;
+    }
+
+    function merge() {
+      if (!currentPiece) return;
+      const { shape, x, y } = currentPiece;
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (shape[r][c] && y + r >= 0) {
+            board[y + r][x + c] = shape[r][c];
+          }
+        }
+      }
+    }
+
+    function clearLines() {
+      let cleared = 0;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r].every(cell => cell !== 0)) {
+          board.splice(r, 1);
+          board.unshift(Array(COLS).fill(0));
+          cleared++;
+          r++;
+        }
+      }
+      if (cleared > 0) {
+        const points = [0, 100, 300, 500, 800];
+        score += (points[cleared] || 800) * level;
+        lines += cleared;
+        level = Math.floor(lines / 10) + 1;
+        dropInterval = Math.max(100, 1000 - (level - 1) * 80);
+        document.getElementById('score').textContent = score;
+        document.getElementById('level').textContent = level;
+        document.getElementById('lines').textContent = lines;
+      }
+    }
+
+    function spawn() {
+      currentPiece = nextPiece || randomPiece();
+      nextPiece = randomPiece();
+      drawNext();
+      if (collide(currentPiece)) {
+        gameOver = true;
+        document.getElementById('final-score').textContent = 'Score: ' + score;
+        document.getElementById('game-over').classList.add('visible');
+        cancelAnimationFrame(animationId);
+      }
+    }
+
+    function drop() {
+      if (gameOver || !currentPiece) return;
+      if (collide(currentPiece, 0, 1)) {
+        merge();
+        clearLines();
+        spawn();
+        return;
+      }
+      currentPiece.y++;
+    }
+
+    function hardDrop() {
+      if (gameOver || !currentPiece) return;
+      while (!collide(currentPiece, 0, 1)) currentPiece.y++;
+      merge();
+      score += (currentPiece.y + currentPiece.shape.length) * 2;
+      document.getElementById('score').textContent = score;
+      clearLines();
+      spawn();
+    }
+
+    function drawBlock(ctx, x, y, color, size = BLOCK) {
+      const pad = 1;
+      ctx.fillStyle = color;
+      ctx.fillRect(x * size + pad, y * size + pad, size - pad * 2, size - pad * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(x * size + pad, y * size + pad, size - pad * 2, 2);
+      ctx.fillRect(x * size + pad, y * size + pad, 2, size - pad * 2);
+    }
+
+    function draw() {
+      ctx.fillStyle = '#0a0a12';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          if (board[r][c]) {
+            drawBlock(ctx, c, r, COLORS[board[r][c]]);
+          }
+        }
+      }
+
+      if (currentPiece) {
+        const { shape, x, y } = currentPiece;
+        for (let r = 0; r < shape.length; r++) {
+          for (let c = 0; c < shape[r].length; c++) {
+            if (shape[r][c]) {
+              drawBlock(ctx, x + c, y + r, COLORS[shape[r][c]]);
+            }
+          }
+        }
+      }
+
+      // grid
+      ctx.strokeStyle = 'rgba(0,255,136,0.1)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= COLS; i++) ctx.strokeRect(i * BLOCK, 0, 0, ROWS * BLOCK);
+      for (let i = 0; i <= ROWS; i++) ctx.strokeRect(0, i * BLOCK, COLS * BLOCK, 0);
+    }
+
+    function drawNext() {
+      nextCtx.fillStyle = '#0a0a12';
+      nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+      if (!nextPiece) return;
+      const shape = nextPiece.shape;
+      const size = 22;
+      const pad = 1;
+      const startX = (nextCanvas.width - shape[0].length * size) / 2;
+      const startY = (nextCanvas.height - shape.length * size) / 2;
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (shape[r][c]) {
+            const px = startX + c * size + pad;
+            const py = startY + r * size + pad;
+            nextCtx.fillStyle = COLORS[shape[r][c]];
+            nextCtx.fillRect(px, py, size - pad * 2, size - pad * 2);
+            nextCtx.fillStyle = 'rgba(255,255,255,0.3)';
+            nextCtx.fillRect(px, py, size - pad * 2, 2);
+            nextCtx.fillRect(px, py, 2, size - pad * 2);
+          }
+        }
+      }
+    }
+
+    function gameLoop(timestamp) {
+      if (gameOver) return;
+      if (timestamp - lastDrop > dropInterval) {
+        drop();
+        lastDrop = timestamp;
+      }
+      draw();
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    function init() {
+      board = createBoard();
+      score = 0;
+      level = 1;
+      lines = 0;
+      gameOver = false;
+      dropInterval = 1000;
+      lastDrop = 0;
+      currentPiece = null;
+      nextPiece = null;
+      document.getElementById('score').textContent = '0';
+      document.getElementById('level').textContent = '1';
+      document.getElementById('lines').textContent = '0';
+      document.getElementById('game-over').classList.remove('visible');
+      spawn();
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (gameOver) return;
+      if (!currentPiece) return;
+      switch (e.code) {
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (!collide(currentPiece, -1, 0)) currentPiece.x--;
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (!collide(currentPiece, 1, 0)) currentPiece.x++;
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          drop();
+          score += 1;
+          document.getElementById('score').textContent = score;
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          const rotated = rotate(currentPiece.shape);
+          if (!collide({ ...currentPiece, shape: rotated })) {
+            currentPiece.shape = rotated;
+          }
+          break;
+        case 'Space':
+          e.preventDefault();
+          hardDrop();
+          break;
+      }
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', init);
+
+    init();
+  </script>
+</body>
+</html>

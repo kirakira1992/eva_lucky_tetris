@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Optional: keep prompt as doc, include it
+# Uncomment to ignore: prompt.txt
